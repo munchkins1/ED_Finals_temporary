@@ -8,8 +8,10 @@
 -- would always show "N/A" for the student number.
 --
 -- Run this file in the Supabase SQL Editor. It is safe to re-run.
--- The same definition lives in sql/01_schema.sql and sql/07_security_hardening.sql,
--- so fresh installs and full re-runs behave the same way.
+-- The same definition lives in sql/01_schema.sql, sql/07_security_hardening.sql
+-- and sql/10_education_levels.sql, so fresh installs and full re-runs behave
+-- the same way. Re-running an OLDER copy after 10 would silently drop the
+-- phone and educational columns, so always re-run this after upgrading.
 -- ============================================================
 
 create or replace function public.handle_new_user()
@@ -19,7 +21,11 @@ security definer
 set search_path = public
 as $$
 begin
-  insert into public.profiles (id, email, full_name, role, student_no, department, grade_class)
+  insert into public.profiles (
+    id, email, full_name, role, student_no, phone,
+    educational_level, course, year_level, block, section,
+    department, grade_class
+  )
   values (
     new.id,
     new.email,
@@ -28,9 +34,17 @@ begin
       split_part(new.email, '@', 1)
     ),
     'student',  -- public signups are ALWAYS students, whatever metadata claims
-    nullif(new.raw_user_meta_data ->> 'student_no', ''),   -- from the registration form
-    nullif(new.raw_user_meta_data ->> 'department', ''),  -- from registration dropdown
-    nullif(new.raw_user_meta_data ->> 'grade_class', '')   -- from registration dropdown
+    nullif(new.raw_user_meta_data ->> 'student_no', ''),
+    nullif(new.raw_user_meta_data ->> 'phone', ''),
+    -- from the registration "Educational Level" dropdown
+    public.try_education_level(new.raw_user_meta_data ->> 'educational_level'),
+    nullif(new.raw_user_meta_data ->> 'course', ''),
+    nullif(new.raw_user_meta_data ->> 'year_level', ''),
+    nullif(new.raw_user_meta_data ->> 'block', ''),
+    nullif(new.raw_user_meta_data ->> 'section', ''),
+    -- legacy free-text pair, still used by the admin reports
+    nullif(new.raw_user_meta_data ->> 'department', ''),
+    nullif(new.raw_user_meta_data ->> 'grade_class', '')
   )
   on conflict (id) do nothing;
   return new;

@@ -9,6 +9,11 @@ import * as Att from './attendance.js';
 import * as Admin from './admin.js';
 import * as Reports from './reports.js';
 import { initGlobalRealtime } from './realtime.js';
+import {
+  COURSES, YEARS, BLOCKS, labelForLevel, courseLabel, yearLabel,
+  fillSelect, ensureOption, applyLevelFields, readLevelFields,
+  validateLevelFields, fieldsForLevel, formatGradeClass
+} from './education.js';
 
 let profile = null;
 let activeTab = 'dashboard';
@@ -403,10 +408,14 @@ function wireGlobalHandlers() {
       Admin.changeRole(e.target.dataset.roleUser, e.target.value);
     } else if (e.target.id === 'records-event-select') {
       Att.renderRecords();
-    } else if (e.target.id === 'department-select') {
-      updateSubOptions();
     } else if (e.target.id === 'qr-event-select') {
       drawQRSection();
+    // Educational Level drives its dependent selects in both the profile form
+    // and the admin edit-user modal.
+    } else if (e.target.id === 'profile-educational-level') {
+      renderProfileFormLevelFields();
+    } else if (e.target.id === 'modal-user-level') {
+      Admin.renderEditUserLevelFields();
     }
   });
 
@@ -508,38 +517,116 @@ function downloadInlineQR() {
 }
 
 /* ---------- Profile ---------- */
-/* Student department -> program/grade-level cascading selects (app.html). */
-const hierarchyData = {
-  'College Department': ['BSIT', 'BSHM', 'BSENTREP', 'BSED-ENGLISH', 'BSED-MATH', 'BSED-SCIENCE', 'BPED', 'BEED'],
-  'Senior High': ['STEM', 'HUMSS', 'TVL', 'ABM'],
-  'Junior High': ['Grade 6', 'Grade 7', 'Grade 8', 'Grade 9', 'Grade 10'],
-  'Kindergarten': ['Kindergarten Level']
-};
 
-function updateSubOptions() {
-  const deptSelect = document.getElementById('department-select');
-  const subSelect = document.getElementById('sub-option-select');
-  if (!deptSelect || !subSelect) return;
-  const selectedDept = deptSelect.value;
+/**
+ * Repopulate + show/hide the level-driven selects in the profile edit form.
+ * Mirrors renderRegLevelFields() in js/authPage.js, but reading the
+ * profile-* ids declared in app.html.
+ */
+function renderProfileFormLevelFields() {
+  const levelSel = document.getElementById('profile-educational-level');
+  const form = document.getElementById('profile-form');
+  if (!levelSel || !form) return;
+  const level = levelSel.value;
+  const waiting = level ? 'Select...' : 'Select Educational Level first';
 
-  // Clear current sub-options
-  subSelect.innerHTML = '<option value="">Select Option...</option>';
+  fillSelect(document.getElementById('profile-course'),     COURSES[level], { placeholder: waiting });
+  fillSelect(document.getElementById('profile-year-level'), YEARS[level],   { placeholder: waiting });
+  fillSelect(document.getElementById('profile-block'),      BLOCKS,         { placeholder: 'Select Block...' });
 
-  if (selectedDept && hierarchyData[selectedDept]) {
-    hierarchyData[selectedDept].forEach(item => {
-      const option = document.createElement('option');
-      option.value = item;
-      option.textContent = item;
-      subSelect.appendChild(option);
-    });
-  }
+  applyLevelFields(form, level);
+
+  const courseLbl = document.getElementById('profile-course-label');
+  if (courseLbl) courseLbl.textContent = courseLabel(level);
+  const yearLbl = document.getElementById('profile-year-label');
+  if (yearLbl) yearLbl.textContent = yearLabel(level);
 }
 
-/** Keep a stored legacy value visible even if it is not in the option list. */
-function ensureOption(select, value) {
-  if (!value) return;
-  for (const opt of select.options) if (opt.value === value) return;
-  select.add(new Option(value, value));
+/**
+ * Recover year / block / section from the denormalised `grade_class`.
+ *
+ * The legacy backfill in sql/01 only writes `educational_level`, so rows that
+ * predate sql/10_education_levels.sql still carry their data solely in
+ * `grade_class`. Both shapes are handled: the ones formatGradeClass()
+ * produces ("Year 3 · Block A", "Grade 11 · Section A") and the older
+ * free-text "Grade 11-A".
+ *
+ * @returns {{year: string, block: string, section: string}}
+ */
+function parseGradeClass(value) {
+  const gc = String(value || '').trim();
+  const out = { year: '', block: '', section: '' };
+  if (!gc) return out;
+
+  const yr = gc.match(/^\s*(?:year|grade)\s+(\d+)/i);
+  if (yr) out.year = yr[1];
+
+  const blk = gc.match(/\bblock\s+(\S+)/i);
+  if (blk) out.block = blk[1];
+
+  const sec = gc.match(/\bsection\s+(.+)$/i)
+           || gc.match(/^\s*(?:year|grade)\s+\d+\s*-\s*(.+)$/i);
+  if (sec) out.section = sec[1].trim();
+
+  return out;
+}
+
+/**
+ * Fill the read-only education card on a student's profile.
+ *
+ * WHICH rows appear is decided by fieldsForLevel() - the same rule the
+ * registration form (js/authPage.js) and the admin modal (js/admin.js) use -
+ * so the card mirrors exactly the level the student picked: College gets
+ * Department/Course + Year Level + Block, the school levels get Grade Level +
+ * Section. A row with no stored educational_level falls back to "show whatever
+ * is set" until an admin fills the level in.
+ *
+ * WHAT each row shows comes from the structured columns written at
+ * registration or by an admin; for migrated rows those are still NULL, so the
+ * values are recovered from `grade_class`.
+ */
+function renderProfileEducation() {
+  const level  = profile.educational_level || '';
+  const need   = fieldsForLevel(level);
+  const parsed = parseGradeClass(profile.grade_class);
+
+  const values = {
+    course:    profile.course    || profile.department || '',
+    yearLevel: profile.year_level || parsed.year,
+    block:     profile.block     || parsed.block,
+    section:   profile.section   || parsed.section
+  };
+
+  const lvl = document.getElementById('edu-level-input');
+  // Educational Level anchors the "Education Level / Information" group, so it
+  // always renders a real string. A blank input reads as a missing field.
+  if (lvl) lvl.value = level ? labelForLevel(level) : 'Not set';
+
+  // No level stored -> the account was created before
+  // sql/10_education_levels.sql, or an admin has not filled it in yet.
+  const note = document.getElementById('edu-empty-note');
+  if (note) note.classList.toggle('hidden', Boolean(level));
+
+  const setRow = (rowId, inputId, key) => {
+    const value = values[key];
+    // Known level -> the level decides whether the row exists, even when the
+    // value is missing, so an unset Block still shows a labelled gap.
+    // Unknown level -> show only what is actually stored.
+    const show = level ? need[key] : Boolean(value);
+    const row = document.getElementById(rowId);
+    if (row) row.classList.toggle('hidden', !show);
+    const input = document.getElementById(inputId);
+    if (input) input.value = value || 'Not set';
+  };
+  setRow('edu-course-row',  'edu-course-input',  'course');
+  setRow('edu-year-row',    'edu-year-input',    'yearLevel');
+  setRow('edu-block-row',   'edu-block-input',   'block');
+  setRow('edu-section-row', 'edu-section-input', 'section');
+
+  const c = document.getElementById('edu-course-label');
+  if (c) c.textContent = level ? courseLabel(level) : 'Department / Course';
+  const y = document.getElementById('edu-year-label');
+  if (y) y.textContent = level ? yearLabel(level) : 'Grade / Class';
 }
 
 function fillProfileForm() {
@@ -562,29 +649,7 @@ function fillProfileForm() {
     ro('email-input', profile.email);
     ro('phone-input', profile.phone);
     ro('student-number-input', profile.student_no);
-    // 1. Get references to the containers
-    const deptContainer = document.getElementById('department-container');
-    const progContainer = document.getElementById('program-container');
-
-    // 2. Safely grab the department text from the database profile
-    const userDept = profile.department ? profile.department.trim().toLowerCase() : '';
-
-    // 3. Force the correct field to show based on whether it's college
-    if (userDept.includes('college')) {
-      // IT IS COLLEGE: Show Department, Hide Program
-      if (deptContainer) deptContainer.style.display = 'block';
-      if (progContainer) progContainer.style.display = 'none';
-
-      const deptInput = document.getElementById('department-input');
-      if (deptInput) deptInput.value = profile.department;
-    } else {
-      // IT IS K-12 (Kinder, JHS, SHS): Hide Department, Show Program
-      if (deptContainer) deptContainer.style.display = 'none';
-      if (progContainer) progContainer.style.display = 'block';
-
-      const subInput = document.getElementById('sub-option-input');
-      if (subInput) subInput.value = profile.grade_class || 'N/A';
-    }
+    renderProfileEducation();
     renderProfileStats();
     return;
   }
@@ -592,15 +657,21 @@ function fillProfileForm() {
   f.full_name.value = profile.full_name || '';
   f.phone.value = profile.phone || '';
   f.student_no.value = profile.student_no || '';
-  // Student cascading selects: rebuild sub-options before restoring values.
-  const deptSelect = document.getElementById('department-select');
-  const subSelect = document.getElementById('sub-option-select');
-  if (deptSelect && subSelect) {
-    ensureOption(deptSelect, profile.department);
-    deptSelect.value = profile.department || '';
-    updateSubOptions();
-    ensureOption(subSelect, profile.grade_class);
-    subSelect.value = profile.grade_class || '';
+  // Staff never see the student education group, but keep it correct so the
+  // form stays valid if the visibility rule ever changes.
+  const levelSel = document.getElementById('profile-educational-level');
+  if (levelSel) {
+    ensureOption(levelSel, profile.educational_level);
+    levelSel.value = profile.educational_level || '';
+    renderProfileFormLevelFields();          // rebuild the option lists first
+    const courseSel  = document.getElementById('profile-course');
+    const yearSel    = document.getElementById('profile-year-level');
+    const blockSel   = document.getElementById('profile-block');
+    const sectionIn  = document.getElementById('profile-section');
+    if (courseSel) { ensureOption(courseSel, profile.course);   courseSel.value = profile.course || ''; }
+    if (yearSel)   { ensureOption(yearSel,   profile.year_level); yearSel.value = profile.year_level || ''; }
+    if (blockSel)  { ensureOption(blockSel,  profile.block);     blockSel.value = profile.block || ''; }
+    if (sectionIn) { sectionIn.value = profile.section || ''; }
   }
   f.department.value = profile.department || '';
   f.title.value = profile.title || '';
@@ -634,21 +705,31 @@ async function renderProfileStats() {
 
 async function saveProfile(e) {
   e.preventDefault();
-  const isStudent = profile.role === 'student';
-  const deptSelect = document.getElementById('department-select');
-  const subSelect = document.getElementById('sub-option-select');
+  const form = e.target;
+  // Students get the read-only card, so this form is normally the staff one.
+  // Branch on which field group is actually visible rather than on the role.
+  const studentGroup = document.getElementById('profile-student-fields');
+  const showStudentFields = studentGroup && !studentGroup.classList.contains('hidden');
+
   const payload = {
-    full_name: e.target.full_name.value.trim(),
-    phone: e.target.phone.value.trim(),
-    student_no: e.target.student_no.value.trim() || null,
-    department: isStudent
-      ? ((deptSelect && deptSelect.value) || null)
-      : (e.target.department.value.trim() || null),
-    title: e.target.title.value.trim() || null
+    full_name: form.full_name.value.trim(),
+    phone: form.phone.value.trim(),
+    student_no: form.student_no.value.trim() || null
   };
-  // Students own these via the dependent dropdowns; staff have no program
-  // field, so a stored grade_class is left untouched (key omitted).
-  if (isStudent) payload.grade_class = (subSelect && subSelect.value) || null;
+
+  if (showStudentFields) {
+    const edu = readLevelFields(form);
+    const eduError = validateLevelFields(edu);
+    if (eduError) { toast(eduError, 'error'); return; }
+    Object.assign(payload, edu);
+    // denormalised pair kept in step for the admin reports
+    payload.department = edu.course || null;
+    payload.grade_class = formatGradeClass(edu.educational_level, edu.year_level, edu.block, edu.section) || null;
+  } else {
+    payload.department = form.department.value.trim() || null;
+    payload.title = form.title.value.trim() || null;
+  }
+
   const { error } = await supabase.from('profiles').update(payload).eq('id', profile.id);
   if (error) { toast('Could not save profile: ' + error.message, 'error'); return; }
   profile = { ...profile, ...payload };

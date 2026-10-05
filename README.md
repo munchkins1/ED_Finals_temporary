@@ -54,15 +54,22 @@ school-qr-attendance/
 ├── supabase-config.js         YOUR real credentials (git-ignored)
 ├── .gitignore                 Ignores secrets / node_modules
 ├── README.md
+├── SUPABASE_SQL.md            Copy-paste mirror of sql/10 + verify queries
 ├── sql/
-│   ├── 01_schema.sql          Tables, enums, constraints, signup trigger
+│   ├── 01_schema.sql          Tables, enums, signup trigger, education columns + grants
 │   ├── 02_functions.sql       Helpers, check_in() RPC, admin RPCs, audit trigger
 │   ├── 03_rls_policies.sql    Row Level Security policies
 │   ├── 04_seed.sql            Demo roles + a sample open event
-│   └── 05_realtime.sql        Optional: live attendance, event, profile & audit updates
+│   ├── 05_realtime.sql        Optional: live attendance, event, profile & audit updates
+│   ├── 06_backfill_profiles.sql   Creates profiles rows missing for older accounts
+│   ├── 07_security_hardening.sql  Column-level grants + RLS WITH CHECK defence
+│   ├── 08_admin_delete_user.sql   Admin-only delete RPC
+│   ├── 09_registration_student_no.sql  Signup trigger variant (superseded by 10)
+│   └── 10_education_levels.sql  Educational level, course, year, block, section
 └── js/
     ├── supabaseClient.js      Creates the Supabase client from the config
     ├── ui.js                  Toasts, loading/empty states, escaping, formatting
+    ├── education.js           Educational level definitions + form/validation helpers
     ├── auth.js                Login / signup / logout / session guard
     ├── authPage.js            Logic for index.html
     ├── events.js              Event CRUD + event QR generation
@@ -88,10 +95,37 @@ profiles   ──1:N──►  audit_logs        (actor_id)
 
 | Table | Purpose |
 |---|---|
-| `profiles` | One row per user: `role`, `full_name`, `student_no`, `grade_class`, `department`, `title`, `is_active` |
+| `profiles` | One row per user: `role`, `full_name`, `email`, `phone`, `student_no`, `is_active`, plus the educational columns `educational_level`, `course`, `year_level`, `block`, `section` and the denormalised display pair `department` + `grade_class` |
 | `events` | `name`, `description`, `venue`, `start_datetime`, `end_datetime`, `status` (draft/open/closed), `qr_token` |
 | `attendance` | `student_id`, `event_id`, `status` (present/late/absent/excused), `method`, `recorded_at` |
 | `audit_logs` | System activity trail for administrators |
+
+### Educational level model
+
+Registration and the profile page share one definition, `js/education.js`. The
+chosen level decides which extra inputs appear:
+
+| Educational Level | → `course` | → `year_level` | → `block` | → `section` |
+|---|---|---|---|---|
+| College | BSIT, BSHM, BEED, BPED, BSED, BSEntrep | 1–4 | A–F | — |
+| Senior High School | STEM, ABM, TVL, HUMSS | 11–12 | — | free text |
+| Junior High School | — | 7–10 | — | free text |
+| Elementary | — | 1–6 | — | free text |
+
+`year_level` doubles as "Year Level" (College) and "Grade Level" (the school
+levels); the label follows the level. `course` is the College course or the
+SHS track.
+
+Two denormalised columns are **also** written on every save, and must never be
+typed by hand:
+
+- `department` ← mirrors `course`
+- `grade_class` ← `formatGradeClass()`, e.g. `Year 3 · Block A` or `Grade 11 · Section B`
+
+`grade_class` exists because the Manage Users table and the CSV reports render a
+"Grade/Class" column. Regenerate it through `formatGradeClass()` so it can never
+drift from the structured columns. `role` and `is_active` are never sent from
+the browser — the signup trigger hardcodes `role = 'student'`.
 
 Key integrity rules:
 - `UNIQUE (event_id, student_id)` on `attendance` → **database-level duplicate prevention**.
@@ -111,13 +145,31 @@ Open **SQL Editor** in the dashboard and run these files **in order**:
 
 | Order | File | What it does |
 |---|---|---|
-| 1 | `sql/01_schema.sql` | Tables, enums, indexes, signup trigger |
+| 1 | `sql/01_schema.sql` | Tables, enums, indexes, signup trigger, **education columns + grants** |
 | 2 | `sql/02_functions.sql` | `check_in()`, admin functions, audit trigger |
 | 3 | `sql/03_rls_policies.sql` | Row Level Security policies |
 | 4 | `sql/04_seed.sql` | Demo roles + sample event (after step 3 below) |
 | 5 | `sql/05_realtime.sql` | *Optional* – live attendance, event, profile & audit updates |
+| 6 | `sql/06_backfill_profiles.sql` | *If* an account has no profile row (created before the trigger existed) |
+| 7 | `sql/07_security_hardening.sql` | Column-level UPDATE grants + RLS `WITH CHECK` |
+| 8 | `sql/10_education_levels.sql` | **Educational level/course/year/block/section columns + backfill** |
 
 > Each file is safe to re-run.
+>
+> **Already have a database?** Just re-run `sql/01_schema.sql`. It now carries the
+> `ALTER TABLE … IF NOT EXISTS` upgrade path, the backfill of existing rows and
+> the column-level grants, so a database built from an older copy picks up the
+> educational fields on its own — `sql/10_education_levels.sql` and
+> `SUPABASE_SQL.md` are the standalone equivalents and do exactly the same
+> thing. Until one of them runs, the registration form fails with
+> *permission denied for table profiles*.
+>
+> Prefer copy-paste? **`SUPABASE_SQL.md`** holds the same SQL in one fenced block,
+> ready for the Supabase SQL Editor, with the verification queries and their
+> expected results underneath. It is a mirror — keep it in step with `sql/10`.
+>
+> `sql/09_registration_student_no.sql` is kept only for history; `01`, `07` and
+> `10` all carry the same `handle_new_user()` definition, so run **`10` last**.
 
 ### Step 3 — Create the demo accounts
 **Dashboard → Authentication → Users → “Add user” → “Create new user”**, tick **Auto Confirm User**,
@@ -258,6 +310,9 @@ The interface is responsive (mobile, tablet and desktop), consistent, and uses o
 | “Supabase is not configured” banner | `supabase-config.js` is missing or still has the placeholder values. Copy the example file and fill in your URL + anon key. |
 | Login says *Invalid login credentials* | Check the email/password, and make sure the user was created and confirmed in Supabase → Authentication → Users. |
 | Registration asks you to confirm your email | Turn off **Confirm email** in Authentication → Providers → Email. |
+| Saving the profile says *permission denied for table profiles* | You have not run `sql/10_education_levels.sql` (or an older `09` re-ran after it). The new columns are missing from the column-level `grant update`. Run `10` again. |
+| A student's Grade/Block/Section is empty on their profile | The signup trigger must be the current one. `01`, `07` and `10` all define `handle_new_user()`; run **`10` last** so the newest definition wins. |
+| Old accounts show Educational Level as *N/A* | `10` only classifies rows it can infer from `department` / `grade_class`. Set the rest through **Admin → Manage Users → Edit**. |
 | The scanner will not start the camera | Run the app on `localhost` or over HTTPS and allow camera permission. A manual “event code” entry box is provided as a fallback. |
 | “No events are currently open for check-in” (student) | Only events with status **open** are visible to students. Open an event as a teacher. |
 | Live updates do not appear | Run `sql/05_realtime.sql`. The app still works; it just needs a refresh. |

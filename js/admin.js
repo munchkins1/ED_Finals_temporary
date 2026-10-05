@@ -5,6 +5,10 @@
 import { supabase } from './supabaseClient.js';
 import { $, esc, toast, tableMessage, statusBadge, fmtDateTime } from './ui.js';
 import { suppressRealtime, realtimeSuppressed } from './app.js';
+import {
+  COURSES, YEARS, BLOCKS, courseLabel, yearLabel,
+  fillSelect, ensureOption, applyLevelFields, readLevelFields, formatGradeClass
+} from './education.js';
 
 let profile = null;
 let users = [];
@@ -117,6 +121,31 @@ export async function toggleActive(userId, currentActive) {
 
 /* ---------- edit user profile modal ---------- */
 let editId = null;
+
+/**
+ * Repopulate + show/hide the level-driven selects in the edit-user modal.
+ * Called on every open and on every Educational Level change (delegated from
+ * app.js, which owns the single document-level change listener).
+ */
+export function renderEditUserLevelFields() {
+  const levelSel = document.getElementById('modal-user-level');
+  const form = document.getElementById('user-form');
+  if (!levelSel || !form) return;
+  const level = levelSel.value;
+  const waiting = level ? 'Select...' : 'Select Educational Level first';
+
+  fillSelect(document.getElementById('modal-user-course'), COURSES[level], { placeholder: waiting });
+  fillSelect(document.getElementById('modal-user-year'),   YEARS[level],   { placeholder: waiting });
+  fillSelect(document.getElementById('modal-user-block'),  BLOCKS,         { placeholder: 'Select Block...' });
+
+  applyLevelFields(form, level);
+
+  const c = document.getElementById('modal-user-course-label');
+  if (c) c.textContent = courseLabel(level);
+  const y = document.getElementById('modal-user-year-label');
+  if (y) y.textContent = yearLabel(level);
+}
+
 export function openEditUser(id) {
   const u = users.find(x => x.id === id);
   if (!u) return;
@@ -124,9 +153,23 @@ export function openEditUser(id) {
   $('#modal-user-name').value = u.full_name || '';
   $('#modal-user-phone').value = u.phone || '';
   $('#modal-user-studentno').value = u.student_no || '';
-  $('#modal-user-grade').value = u.grade_class || '';
-  $('#modal-user-dept').value = u.department || '';
   $('#modal-user-title').value = u.title || '';
+
+  // Rebuild the option lists for this level BEFORE restoring the values, so
+  // ensureOption() has a full list to check against.
+  const levelSel = $('#modal-user-level');
+  ensureOption(levelSel, u.educational_level);
+  levelSel.value = u.educational_level || '';
+  renderEditUserLevelFields();
+
+  const courseSel = $('#modal-user-course');
+  const yearSel   = $('#modal-user-year');
+  const blockSel  = $('#modal-user-block');
+  ensureOption(courseSel, u.course);    courseSel.value = u.course || '';
+  ensureOption(yearSel,   u.year_level); yearSel.value   = u.year_level || '';
+  ensureOption(blockSel,  u.block);      blockSel.value  = u.block || '';
+  $('#modal-user-section').value = u.section || '';
+
   const m = document.getElementById('user-modal');
   m.classList.remove('hidden'); m.classList.add('flex');
 }
@@ -138,13 +181,24 @@ export function closeEditUser() {
 
 export async function saveUserProfile(e) {
   e.preventDefault();
+  const edu = readLevelFields(e.target);
+
   const payload = {
     full_name: $('#modal-user-name').value.trim(),
     phone: $('#modal-user-phone').value.trim(),
     student_no: $('#modal-user-studentno').value.trim() || null,
-    grade_class: $('#modal-user-grade').value.trim() || null,
-    department: $('#modal-user-dept').value.trim() || null,
-    title: $('#modal-user-title').value.trim() || null
+    title: $('#modal-user-title').value.trim() || null,
+    // Choosing "Not set" clears the whole group, because applyLevelFields()
+    // disables every dependent control when the level is empty.
+    educational_level: edu.educational_level,
+    course:            edu.course,
+    year_level:        edu.year_level,
+    block:             edu.block,
+    section:           edu.section,
+    // denormalised pair, regenerated from the columns above so the reports in
+    // js/reports.js and the Manage Users table stay in step
+    department: edu.course || null,
+    grade_class: formatGradeClass(edu.educational_level, edu.year_level, edu.block, edu.section) || null
   };
   const { error } = await supabase.from('profiles').update(payload).eq('id', editId);
   if (error) { toast('Could not save user: ' + error.message, 'error'); return; }

@@ -3,38 +3,38 @@
 import { supabase, CONFIG_OK } from './supabaseClient.js';
 import { toast, setBusy } from './ui.js';
 import { signIn, signUp } from './auth.js';
+import {
+  COURSES, YEARS, BLOCKS,
+  fillSelect, applyLevelFields, readLevelFields,
+  validateLevelFields, validatePhone, formatGradeClass,
+  courseLabel, yearLabel
+} from './education.js';
 
 const loginForm = document.getElementById('login-form');
 const registerForm = document.getElementById('register-form');
 const msgBox = document.getElementById('auth-message');
 
-// Department -> Program / Grade Level hierarchy (mirrors the profile page
-// dropdowns in app.html / js/app.js). Kept as a separate copy here because
-// the login page never loads app.js.
-const hierarchyData = {
-  'College Department': ['BSIT', 'BSHM', 'BSENTREP', 'BSED-ENGLISH', 'BSED-MATH', 'BSED-SCIENCE', 'BPED', 'BEED'],
-  'Senior High': ['STEM', 'HUMSS', 'TVL', 'ABM'],
-  'Junior High': ['Grade 6', 'Grade 7', 'Grade 8', 'Grade 9', 'Grade 10'],
-  'Kindergarten': ['Kindergarten Level']
-};
+/**
+ * Repopulate and show/hide the level-specific registration inputs.
+ * Driven entirely by js/education.js, which the profile page and the admin
+ * modal share, so the three can never disagree about the option lists.
+ */
+function renderRegLevelFields() {
+  const levelSel = document.getElementById('reg-educational-level');
+  const level = levelSel ? levelSel.value : '';
+  const waiting = level ? 'Select...' : 'Select Educational Level first';
 
-/** Rebuild the Program / Grade Level options for the selected department. */
-function updateRegSubOptions() {
-  const deptSelect = document.getElementById('reg-department');
-  const subSelect = document.getElementById('reg-sub-option');
-  if (!deptSelect || !subSelect) return;
-  const selectedDept = deptSelect.value;
+  fillSelect(document.getElementById('reg-course'),     COURSES[level], { placeholder: waiting });
+  fillSelect(document.getElementById('reg-year-level'), YEARS[level],   { placeholder: waiting });
+  fillSelect(document.getElementById('reg-block'),      BLOCKS,         { placeholder: 'Select Block...' });
 
-  subSelect.innerHTML = '<option value="">Select Option...</option>';
+  // Hide + disable what the level does not need.
+  applyLevelFields(registerForm, level);
 
-  if (selectedDept && hierarchyData[selectedDept]) {
-    hierarchyData[selectedDept].forEach(item => {
-      const option = document.createElement('option');
-      option.value = item;
-      option.textContent = item;
-      subSelect.appendChild(option);
-    });
-  }
+  const courseLbl = document.getElementById('reg-course-label');
+  if (courseLbl) courseLbl.textContent = courseLabel(level);
+  const yearLbl = document.getElementById('reg-year-label');
+  if (yearLbl) yearLbl.textContent = yearLabel(level);
 }
 
 function showMessage(text, kind = 'error') {
@@ -64,10 +64,11 @@ function init() {
   wireTabs();
   loginForm.addEventListener('submit', onLogin);
   registerForm.addEventListener('submit', onRegister);
-  // Department dropdown drives the Program / Grade Level options.
-  registerForm.addEventListener('change', (e) => {
-    if (e.target.id === 'reg-department') updateRegSubOptions();
-  });
+
+  // Educational Level drives every dependent input below it.
+  const levelSel = document.getElementById('reg-educational-level');
+  if (levelSel) levelSel.addEventListener('change', renderRegLevelFields);
+  renderRegLevelFields();
 }
 
 function wireTabs() {
@@ -121,25 +122,38 @@ async function onLogin(e) {
 
 async function onRegister(e) {
   e.preventDefault();
-  const btn = e.target.querySelector('button[type="submit"]');
-  const fullName = e.target.full_name.value.trim();
-  const email = e.target.email.value.trim();
-  const password = e.target.password.value;
-  const confirm = e.target.confirm.value;
-  const studentNumber = e.target.student_number.value.trim();
+  const form = e.target;
+  const btn = form.querySelector('button[type="submit"]');
+  const fullName = form.full_name.value.trim();
+  const email = form.email.value.trim();
+  const phone = form.phone ? form.phone.value.trim() : '';
+  const password = form.password.value;
+  const confirm = form.confirm.value;
+  const studentNumber = form.student_number.value.trim();
 
   if (!fullName) { showMessage('Please enter your full name.'); return; }
   if (!studentNumber) { showMessage('Please enter your school ID number.'); return; }
   if (password.length < 6) { showMessage('Password must be at least 6 characters.'); return; }
   if (password !== confirm) { showMessage('Passwords do not match.'); return; }
-  const department = document.getElementById('reg-department').value;
-  const gradeClass = document.getElementById('reg-sub-option').value;
-  if (!department) { showMessage('Please select your department.'); return; }
-  if (!gradeClass) { showMessage('Please select your program / grade level.'); return; }
+
+  const phoneError = validatePhone(phone);
+  if (phoneError) { showMessage(phoneError); return; }
+
+  const edu = readLevelFields(form);
+  const levelError = validateLevelFields(edu);
+  if (levelError) { showMessage(levelError); return; }
+
+  // Denormalised copies kept in step with the structured columns, so the admin
+  // reports (js/admin.js, js/reports.js) keep showing a "Grade/Class" value
+  // without needing to know about the new columns.
+  const department = edu.course || null;
+  const gradeClass = formatGradeClass(edu.educational_level, edu.year_level, edu.block, edu.section) || null;
 
   setBusy(btn, true, 'Creating account...');
   try {
-    const { session } = await signUp(email, password, fullName, department, gradeClass, studentNumber);
+    const { session } = await signUp(email, password, fullName, {
+      phone, studentNumber, department, gradeClass, ...edu
+    });
     if (session) {
       toast('Account created. Welcome!', 'success');
       location.replace('app.html');

@@ -414,17 +414,51 @@
             <label class="block text-xs font-semibold uppercase text-slate-500 mb-1">School ID Number</label>
             <input id="student-number-input" type="text" readonly class="w-full border border-slate-200 bg-slate-50 rounded-lg p-2 text-sm text-slate-500">
           </div>
-          <!-- DEPARTMENT CONTAINER -->
-          <!-- Department Container -->
-          <div class="mb-4" id="department-container" style="display: none;">
-            <label class="block text-xs font-semibold uppercase text-slate-500 mb-1">Department</label>
-            <input type="text" id="department-input" readonly class="w-full bg-slate-100 border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-600">
+        </div>
+
+        <!-- Education Level / Information.
+             Educational Level is ALWAYS shown here as the first row of this
+             group, so it can never appear to be missing. The rows under it are
+             chosen by fieldsForLevel() from the stored educational_level - the
+             same rule as registration and the admin modal - inside
+             renderProfileEducation() (js/app.js). -->
+        <div class="mt-5 pt-5 border-t border-slate-200">
+          <h4 class="text-xs font-bold uppercase tracking-wider text-slate-400 mb-4">Education Level / Information</h4>
+          <!-- Shown by renderProfileEducation() when educational_level is NULL,
+               which is every account created before sql/10_education_levels.sql. -->
+          <p id="edu-empty-note" class="hidden mb-4 rounded-lg bg-amber-50 border border-amber-200 text-amber-700 text-sm p-3">
+            Your educational details have not been set on your account yet.
+            Ask an administrator to fill them in from <strong>Admin → Manage Users → Edit</strong>.
+          </p>
+          <div class="space-y-4">
+            <div>
+              <label class="block text-xs font-semibold uppercase text-slate-500 mb-1">Educational Level</label>
+              <input type="text" id="edu-level-input" readonly class="w-full border border-slate-200 bg-slate-50 rounded-lg p-2 text-sm text-slate-500">
+            </div>
+
+          <div class="hidden" id="edu-course-row">
+            <label class="block text-xs font-semibold uppercase text-slate-500 mb-1">
+              <span id="edu-course-label">Department / Course</span>
+            </label>
+            <input type="text" id="edu-course-input" readonly class="w-full border border-slate-200 bg-slate-50 rounded-lg p-2 text-sm text-slate-500">
           </div>
 
-          <!-- Program / Grade Level Container -->
-          <div class="mb-4" id="program-container" style="display: none;">
-            <label class="block text-xs font-semibold uppercase text-slate-500 mb-1">Program / Grade Level</label>
-            <input type="text" id="sub-option-input" readonly class="w-full bg-slate-100 border border-slate-300 rounded-lg px-3 py-2 text-sm text-slate-600">
+          <div class="hidden" id="edu-year-row">
+            <label class="block text-xs font-semibold uppercase text-slate-500 mb-1">
+              <span id="edu-year-label">Year Level</span>
+            </label>
+            <input type="text" id="edu-year-input" readonly class="w-full border border-slate-200 bg-slate-50 rounded-lg p-2 text-sm text-slate-500">
+          </div>
+
+          <div class="hidden" id="edu-block-row">
+            <label class="block text-xs font-semibold uppercase text-slate-500 mb-1">Block</label>
+            <input type="text" id="edu-block-input" readonly class="w-full border border-slate-200 bg-slate-50 rounded-lg p-2 text-sm text-slate-500">
+          </div>
+
+          <div class="hidden" id="edu-section-row">
+            <label class="block text-xs font-semibold uppercase text-slate-500 mb-1">Section</label>
+            <input type="text" id="edu-section-input" readonly class="w-full border border-slate-200 bg-slate-50 rounded-lg p-2 text-sm text-slate-500">
+          </div>
           </div>
         </div>
       </div>
@@ -442,26 +476,46 @@
             <label class="block text-xs font-semibold uppercase text-slate-500 mb-1">Phone</label>
             <input name="phone" type="text" class="w-full border border-slate-300 rounded-lg p-2 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none">
           </div>
-          <div id="profile-student-fields" class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div id="profile-student-fields" class="space-y-4">
             <div>
               <label class="block text-xs font-semibold uppercase text-slate-500 mb-1">School ID Number</label>
               <input name="student_no" type="text" class="w-full border border-slate-300 rounded-lg p-2 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none">
             </div>
             <div>
-              <label for="department-select" class="block text-xs font-semibold uppercase text-slate-500 mb-1">Department</label>
-              <select id="department-select" class="w-full border border-slate-300 rounded-lg p-2 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none bg-white">
-                <option value="">Select Department...</option>
-                <option value="College Department">College Department</option>
-                <option value="Senior High">Senior High School Department</option>
-                <option value="Junior High">Junior High School Department</option>
-                <option value="Kindergarten">Kindergarten</option>
+              <label for="profile-educational-level" class="block text-xs font-semibold uppercase text-slate-500 mb-1">Educational Level</label>
+              <select id="profile-educational-level" data-edu-input="educational_level"
+                class="w-full border border-slate-300 rounded-lg p-2 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none bg-white">
+                <option value="">Select Educational Level...</option>
+                <option value="college">College</option>
+                <option value="senior_high">Senior High School</option>
+                <option value="junior_high">Junior High School</option>
+                <option value="elementary">Elementary</option>
               </select>
             </div>
-            <div>
-              <label for="sub-option-select" class="block text-xs font-semibold uppercase text-slate-500 mb-1">Program / Grade Level</label>
-              <select id="sub-option-select" class="w-full border border-slate-300 rounded-lg p-2 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none bg-white">
-                <option value="">Select Department First...</option>
-              </select>
+            <div data-edu-field="course" class="hidden">
+              <label for="profile-course" class="block text-xs font-semibold uppercase text-slate-500 mb-1">
+                <span id="profile-course-label">Department / Course</span>
+              </label>
+              <select id="profile-course" data-edu-input="course"
+                class="w-full border border-slate-300 rounded-lg p-2 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none bg-white"></select>
+            </div>
+            <div data-edu-field="yearLevel" class="hidden">
+              <label for="profile-year-level" class="block text-xs font-semibold uppercase text-slate-500 mb-1">
+                <span id="profile-year-label">Year Level</span>
+              </label>
+              <select id="profile-year-level" data-edu-input="year_level"
+                class="w-full border border-slate-300 rounded-lg p-2 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none bg-white"></select>
+            </div>
+            <div data-edu-field="block" class="hidden">
+              <label for="profile-block" class="block text-xs font-semibold uppercase text-slate-500 mb-1">Block</label>
+              <select id="profile-block" data-edu-input="block"
+                class="w-full border border-slate-300 rounded-lg p-2 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none bg-white"></select>
+            </div>
+            <div data-edu-field="section" class="hidden">
+              <label for="profile-section" class="block text-xs font-semibold uppercase text-slate-500 mb-1">Section</label>
+              <input id="profile-section" data-edu-input="section" type="text" maxlength="20"
+                class="w-full border border-slate-300 rounded-lg p-2 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+                placeholder="e.g. A">
             </div>
           </div>
           <div id="profile-staff-fields" class="grid grid-cols-1 sm:grid-cols-2 gap-4 hidden">
@@ -585,16 +639,50 @@
             <input id="modal-user-studentno" type="text" class="w-full border border-slate-300 rounded-lg p-2 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none">
           </div>
           <div>
-            <label class="block text-xs font-semibold uppercase text-slate-500 mb-1">Grade / Class</label>
-            <input id="modal-user-grade" type="text" class="w-full border border-slate-300 rounded-lg p-2 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none">
-          </div>
-          <div>
-            <label class="block text-xs font-semibold uppercase text-slate-500 mb-1">Department</label>
-            <input id="modal-user-dept" type="text" class="w-full border border-slate-300 rounded-lg p-2 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none">
-          </div>
-          <div>
             <label class="block text-xs font-semibold uppercase text-slate-500 mb-1">Title</label>
             <input id="modal-user-title" type="text" class="w-full border border-slate-300 rounded-lg p-2 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none">
+          </div>
+        </div>
+
+        <!-- Educational Level drives the group below. Saving regenerates the
+             denormalised department + grade_class pair automatically, so an
+             admin never types them by hand. -->
+        <div class="border-t border-slate-200 pt-4 space-y-4">
+          <div>
+            <label for="modal-user-level" class="block text-xs font-semibold uppercase text-slate-500 mb-1">Educational Level</label>
+            <select id="modal-user-level" data-edu-input="educational_level"
+              class="w-full border border-slate-300 rounded-lg p-2 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none bg-white">
+              <option value="">Not set</option>
+              <option value="college">College</option>
+              <option value="senior_high">Senior High School</option>
+              <option value="junior_high">Junior High School</option>
+              <option value="elementary">Elementary</option>
+            </select>
+          </div>
+          <div data-edu-field="course" class="hidden">
+            <label for="modal-user-course" class="block text-xs font-semibold uppercase text-slate-500 mb-1">
+              <span id="modal-user-course-label">Department / Course</span>
+            </label>
+            <select id="modal-user-course" data-edu-input="course"
+              class="w-full border border-slate-300 rounded-lg p-2 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none bg-white"></select>
+          </div>
+          <div data-edu-field="yearLevel" class="hidden">
+            <label for="modal-user-year" class="block text-xs font-semibold uppercase text-slate-500 mb-1">
+              <span id="modal-user-year-label">Year Level</span>
+            </label>
+            <select id="modal-user-year" data-edu-input="year_level"
+              class="w-full border border-slate-300 rounded-lg p-2 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none bg-white"></select>
+          </div>
+          <div data-edu-field="block" class="hidden">
+            <label for="modal-user-block" class="block text-xs font-semibold uppercase text-slate-500 mb-1">Block</label>
+            <select id="modal-user-block" data-edu-input="block"
+              class="w-full border border-slate-300 rounded-lg p-2 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none bg-white"></select>
+          </div>
+          <div data-edu-field="section" class="hidden">
+            <label for="modal-user-section" class="block text-xs font-semibold uppercase text-slate-500 mb-1">Section</label>
+            <input id="modal-user-section" data-edu-input="section" type="text" maxlength="20"
+              class="w-full border border-slate-300 rounded-lg p-2 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+              placeholder="e.g. A">
           </div>
         </div>
         <div>

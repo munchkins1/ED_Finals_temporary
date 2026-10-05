@@ -32,14 +32,19 @@
 revoke update on public.profiles from anon, authenticated;
 
 -- Re-grant UPDATE on ONLY the harmless, self-editable columns. The app writes
--- exactly these six:
---   js/app.js   saveProfile()      -> full_name, phone, student_no,
---                                     grade_class, department, title
---   js/admin.js saveUserProfile()  -> same six
+-- exactly these eleven:
+--   js/auth.js signUp()      -> writes via handle_new_user() instead (not a PATCH)
+--   js/app.js   saveProfile()      -> full_name, phone, student_no, title,
+--                                     department + the five educational columns
+--                                     (grade_class is derived via formatGradeClass)
+--   js/admin.js saveUserProfile()  -> same eleven
 -- NOT granted: role, is_active, email, id, created_at
 -- A student PATCHing { "role": "admin" } now fails with
 -- "permission denied for table profiles".
-grant update (full_name, phone, student_no, grade_class, department, title)
+-- The five educational columns were added by 10_education_levels.sql; this copy
+-- is kept in sync so a full re-run of this file does not strip them.
+grant update (full_name, phone, student_no, grade_class, department, title,
+              educational_level, course, year_level, block, section)
   on public.profiles to authenticated;
 
 -- ============================================================
@@ -90,7 +95,11 @@ security definer
 set search_path = public
 as $$
 begin
-  insert into public.profiles (id, email, full_name, role, student_no, department, grade_class)
+  insert into public.profiles (
+    id, email, full_name, role, student_no, phone,
+    educational_level, course, year_level, block, section,
+    department, grade_class
+  )
   values (
     new.id,
     new.email,
@@ -99,9 +108,17 @@ begin
       split_part(new.email, '@', 1)
     ),
     'student',  -- public signups are ALWAYS students, whatever metadata claims
-    nullif(new.raw_user_meta_data ->> 'student_no', ''),   -- from the registration form
-    nullif(new.raw_user_meta_data ->> 'department', ''),  -- from registration dropdown
-    nullif(new.raw_user_meta_data ->> 'grade_class', '')   -- from registration dropdown
+    nullif(new.raw_user_meta_data ->> 'student_no', ''),
+    nullif(new.raw_user_meta_data ->> 'phone', ''),
+    -- from the registration "Educational Level" dropdown
+    public.try_education_level(new.raw_user_meta_data ->> 'educational_level'),
+    nullif(new.raw_user_meta_data ->> 'course', ''),
+    nullif(new.raw_user_meta_data ->> 'year_level', ''),
+    nullif(new.raw_user_meta_data ->> 'block', ''),
+    nullif(new.raw_user_meta_data ->> 'section', ''),
+    -- legacy free-text pair, still used by the admin reports
+    nullif(new.raw_user_meta_data ->> 'department', ''),
+    nullif(new.raw_user_meta_data ->> 'grade_class', '')
   )
   on conflict (id) do nothing;
   return new;
@@ -129,7 +146,8 @@ revoke execute on function public.admin_set_active(uuid, boolean) from anon;
 --  where table_schema = 'public' and table_name = 'profiles'
 --    and grantee = 'authenticated' and privilege_type = 'UPDATE'
 --  order by column_name;
---    expect: department, full_name, grade_class, phone, student_no, title
+--    expect: block, course, department, educational_level, full_name,
+--            grade_class, phone, section, student_no, title, year_level
 --    must NOT contain: role, is_active, email, id
 --
 -- 2. the signup trigger must exist and hardcode 'student':

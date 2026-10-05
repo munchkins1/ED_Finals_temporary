@@ -63,19 +63,24 @@ export async function signIn(email, password) {
  *
  * SECURITY: the role is NEVER accepted from the browser. It is assigned
  * server-side by the handle_new_user() trigger in sql/01_schema.sql (hardened
- * again in 07_security_hardening.sql), which always inserts role = 'student'.
- * A hand-crafted request that adds `role: "admin"` to `options.data` only
- * writes it into auth user metadata, which the trigger ignores, and the RLS
- * policies plus column privileges prevent any later self-promotion.
+ * again in 07 and 10), which always inserts role = 'student'. A hand-crafted
+ * request that adds `role: "admin"` to `options.data` only writes it into auth
+ * user metadata, which the trigger ignores, and the RLS policies plus column
+ * privileges prevent any later self-promotion.
  *
  * @param {string} email
  * @param {string} password
  * @param {string} fullName
- * @param {string} [department]
- * @param {string} [gradeClass]
- * @param {string} [studentNumber]
+ * @param {object} meta - self-editable profile fields:
+ *   { phone, studentNumber, department, gradeClass,
+ *     educational_level, course, year_level, block, section }
  */
-export async function signUp(email, password, fullName, department, gradeClass, studentNumber) {
+export async function signUp(email, password, fullName, meta = {}) {
+  const {
+    phone, studentNumber, department, gradeClass,
+    educational_level, course, year_level, block, section
+  } = meta;
+
   const { data, error } = await supabase.auth.signUp({
     email,
     password,
@@ -86,6 +91,13 @@ export async function signUp(email, password, fullName, department, gradeClass, 
       data: {
         full_name: fullName,
         student_no: studentNumber || null,
+        phone: phone || null,
+        educational_level: educational_level || null,
+        course: course || null,
+        year_level: year_level || null,
+        block: block || null,
+        section: section || null,
+        // denormalised pair, still read by the admin reports
         department: department || null,
         grade_class: gradeClass || null
       }
