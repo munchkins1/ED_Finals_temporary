@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CampusQR · School Event Attendance System</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <style>
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+    .animate-fade-in { animation: fadeIn .25s ease-out; }
+  </style>
+</head>
+<body class="bg-slate-100 text-slate-800 font-sans antialiased min-h-screen flex flex-col">
+
+  <!-- Config Warning Banner -->
+  <div id="config-warning" class="hidden bg-amber-50 border-b border-amber-200 text-amber-800 p-3 text-xs text-center font-medium">
+    <i class="fa-solid fa-triangle-exclamation mr-1"></i> Supabase configuration missing. Ensure `supabase-config.js` is properly set up.
+  </div>
+
+  <!-- Dynamic Header Navigation (Appears after login) -->
+  <header id="app-header" class="bg-indigo-600 text-white shadow-md hidden">
+    <div class="max-w-7xl mx-auto px-4 py-3 flex justify-between items-center">
+      <div class="flex items-center space-x-3">
+        <i class="fa-solid fa-qrcode text-xl bg-white text-indigo-600 p-2 rounded-lg"></i>
+        <div>
+          <h1 class="font-bold tracking-wide text-sm md:text-base leading-tight">CampusQR Attend</h1>
+          <p id="user-role-subtitle" class="text-xs text-indigo-200">System Portal</p>
+        </div>
+      </div>
+
+      <!-- Role-Based Navigation Container (Injected via JS based on user role) -->
+      <nav id="nav-container" class="flex items-center space-x-1 md:space-x-3 text-sm font-medium">
+        <!-- Buttons are injected dynamically -->
+      </nav>
+    </div>
+  </header>
+
+  <!-- Main Content Area -->
+  <main class="flex-grow flex items-center justify-center p-4 md:p-6">
+
+    <!-- VIEW: AUTH (Login & Register) -->
+    <section id="view-auth" class="w-full max-w-md animate-fade-in">
+      <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+        <div class="grid grid-cols-2 text-sm font-semibold">
+          <button id="tab-login-btn" class="py-3 border-b-2 border-indigo-600 text-indigo-600">Login</button>
+          <button id="tab-register-btn" class="py-3 border-b-2 border-transparent text-slate-500 hover:text-indigo-600">Register</button>
+        </div>
+
+        <!-- Login Form -->
+        <form id="login-form" class="p-6 space-y-4">
+          <h2 class="text-lg font-bold">Welcome back</h2>
+          <div>
+            <label class="block text-xs font-semibold uppercase text-slate-500 mb-1">Email</label>
+            <input name="email" type="email" required autocomplete="email"
+              class="w-full border border-slate-300 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+              placeholder="you@school.edu">
+          </div>
+          <div>
+            <label class="block text-xs font-semibold uppercase text-slate-500 mb-1">Password</label>
+            <input name="password" type="password" required autocomplete="current-password"
+              class="w-full border border-slate-300 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+              placeholder="Enter your password">
+          </div>
+          <button type="submit" class="w-full bg-indigo-600 text-white py-2.5 rounded-lg font-semibold hover:bg-indigo-700 transition">
+            <i class="fa-solid fa-right-to-bracket mr-2"></i>Login
+          </button>
+        </form>
+
+        <!-- Register Form -->
+        <form id="register-form" class="p-6 space-y-4 hidden">
+          <h2 class="text-lg font-bold">Create a student account</h2>
+          <div>
+            <label class="block text-xs font-semibold uppercase text-slate-500 mb-1">Full name</label>
+            <input name="full_name" type="text" required
+              class="w-full border border-slate-300 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+              placeholder="Jane Doe">
+          </div>
+          <div>
+            <label class="block text-xs font-semibold uppercase text-slate-500 mb-1">Email</label>
+            <input name="email" type="email" required autocomplete="email"
+              class="w-full border border-slate-300 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+              placeholder="you@school.edu">
+          </div>
+          <div>
+            <label class="block text-xs font-semibold uppercase text-slate-500 mb-1">School ID Number</label>
+            <input name="student_number" type="text" required
+              class="w-full border border-slate-300 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+              placeholder="e.g. STU-2026-001">
+          </div>
+          <div>
+            <label class="block text-xs font-semibold uppercase text-slate-500 mb-1">Password</label>
+            <input name="password" type="password" required minlength="6" autocomplete="new-password"
+              class="w-full border border-slate-300 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+              placeholder="At least 6 characters">
+          </div>
+          <div>
+            <label class="block text-xs font-semibold uppercase text-slate-500 mb-1">Confirm password</label>
+            <input name="confirm" type="password" required minlength="6" autocomplete="new-password"
+              class="w-full border border-slate-300 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none"
+              placeholder="Repeat password">
+          </div>
+          <div>
+            <label class="block text-xs font-semibold uppercase text-slate-500 mb-1">Department</label>
+            <select id="reg-department" class="w-full border border-slate-300 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none bg-white">
+              <option value="">Select Department...</option>
+              <option value="College Department">College Department</option>
+              <option value="Senior High">Senior High School Department</option>
+              <option value="Junior High">Junior High School Department</option>
+              <option value="Kindergarten">Kindergarten</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs font-semibold uppercase text-slate-500 mb-1">Program / Grade Level</label>
+            <select id="reg-sub-option" class="w-full border border-slate-300 rounded-lg p-2.5 text-sm focus:ring-2 focus:ring-indigo-500 focus:outline-none bg-white">
+              <option value="">Select Option...</option>
+            </select>
+          </div>
+          <button type="submit" class="w-full bg-indigo-600 text-white py-2.5 rounded-lg font-semibold hover:bg-indigo-700 transition">
+            <i class="fa-solid fa-user-plus mr-2"></i>Register
+          </button>
+          <p class="text-xs text-slate-500">New accounts register as <b>students</b> automatically.</p>
+        </form>
+
+        <div id="auth-message" class="hidden"></div>
+      </div>
+    </section>
+
+    <!-- VIEW: APP DASHBOARD CONTAINER (Hidden until login) -->
+    <section id="view-dashboard" class="w-full max-w-7xl hidden animate-fade-in">
+      <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
+        <h2 id="dashboard-title" class="text-xl font-bold mb-2">Dashboard</h2>
+        <p class="text-sm text-slate-500">Welcome to your portal view.</p>
+      </div>
+    </section>
+
+  </main>
+
+  <footer class="text-center py-4 text-xs text-slate-400">
+    Protected by Supabase Auth · Row Level Security enabled
+  </footer>
+
+  <!-- Scripts -->
+  <script src="supabase-config.js" onerror="window.__configMissing = true"></script>
+  <script type="module" src="js/authPage.js"></script>
+  <script>
+    // Role-based navigation renderer helper
+    function renderNavigation(role) {
+      const header = document.getElementById('app-header');
+      const authView = document.getElementById('view-auth');
+      const dashboardView = document.getElementById('view-dashboard');
+      const navContainer = document.getElementById('nav-container');
+      const subtitle = document.getElementById('user-role-subtitle');
+      
+      header.classList.remove('hidden');
+      authView.classList.add('hidden');
+      dashboardView.classList.remove('hidden');
+      navContainer.innerHTML = '';
+
+      if (role === 'student') {
+        subtitle.textContent = 'Student Portal';
+        navContainer.innerHTML = `
+          <a href="#events" class="px-3 py-2 rounded-lg hover:bg-indigo-700 transition flex items-center gap-1.5"><i class="fa-solid fa-calendar-days"></i> Events</a>
+          <a href="#scan" class="px-3 py-2 rounded-lg hover:bg-indigo-700 transition flex items-center gap-1.5"><i class="fa-solid fa-camera"></i> Scan QR</a>
+          <a href="#history" class="px-3 py-2 rounded-lg hover:bg-indigo-700 transition flex items-center gap-1.5"><i class="fa-solid fa-clock-rotate-left"></i> My History</a>
+          <a href="#profile" class="px-3 py-2 rounded-lg hover:bg-indigo-700 transition flex items-center gap-1.5"><i class="fa-solid fa-user"></i> Profile</a>
+          <button id="logout-btn" class="bg-indigo-700 hover:bg-indigo-800 px-3 py-2 rounded-lg transition text-xs font-semibold ml-2"><i class="fa-solid fa-right-from-bracket mr-1"></i> Logout</button>
+        `;
+      } else if (role === 'teacher') {
+        subtitle.textContent = 'Teacher Portal';
+        navContainer.innerHTML = `
+          <a href="#events" class="px-3 py-2 rounded-lg hover:bg-indigo-700 transition flex items-center gap-1.5"><i class="fa-solid fa-calendar-plus"></i> Manage Events</a>
+          <a href="#qr-generator" class="px-3 py-2 rounded-lg hover:bg-indigo-700 transition flex items-center gap-1.5"><i class="fa-solid fa-qrcode"></i> Generate QR</a>
+          <a href="#monitor" class="px-3 py-2 rounded-lg hover:bg-indigo-700 transition flex items-center gap-1.5"><i class="fa-solid fa-chart-line"></i> Monitor Attendance</a>
+          <a href="#summaries" class="px-3 py-2 rounded-lg hover:bg-indigo-700 transition flex items-center gap-1.5"><i class="fa-solid fa-file-lines"></i> Summaries</a>
+          <button id="logout-btn" class="bg-indigo-700 hover:bg-indigo-800 px-3 py-2 rounded-lg transition text-xs font-semibold ml-2"><i class="fa-solid fa-right-from-bracket mr-1"></i> Logout</button>
+        `;
+      } else if (role === 'admin') {
+        subtitle.textContent = 'Administrator Portal';
+        navContainer.innerHTML = `
+          <a href="#users" class="px-3 py-2 rounded-lg hover:bg-indigo-700 transition flex items-center gap-1.5"><i class="fa-solid fa-users-gear"></i> Manage Users</a>
+          <a href="#events" class="px-3 py-2 rounded-lg hover:bg-indigo-700 transition flex items-center gap-1.5"><i class="fa-solid fa-calendar-days"></i> Manage Events</a>
+          <a href="#attendance" class="px-3 py-2 rounded-lg hover:bg-indigo-700 transition flex items-center gap-1.5"><i class="fa-solid fa-clipboard-user"></i> Overall Attendance</a>
+          <a href="#correct-records" class="px-3 py-2 rounded-lg hover:bg-indigo-700 transition flex items-center gap-1.5"><i class="fa-solid fa-pen-to-square"></i> Correct Records</a>
+          <a href="#reports" class="px-3 py-2 rounded-lg hover:bg-indigo-700 transition flex items-center gap-1.5"><i class="fa-solid fa-chart-pie"></i> System Reports</a>
+          <button id="logout-btn" class="bg-indigo-700 hover:bg-indigo-800 px-3 py-2 rounded-lg transition text-xs font-semibold ml-2"><i class="fa-solid fa-right-from-bracket mr-1"></i> Logout</button>
+        `;
+      }
+    }
+  </script>
+</body>
+</html>z
